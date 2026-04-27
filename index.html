@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>富文本生成工具</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #f0f2f5;
+      --card: #ffffff;
+      --border: #e0e0e0;
+      --accent: #4f6ef7;
+      --accent-hover: #3b57d9;
+      --text: #1a1a2e;
+      --text-secondary: #6b7280;
+      --toolbar-bg: #fafbfc;
+      --shadow: 0 8px 30px rgba(0,0,0,.08);
+      --radius: 12px;
+      --code-bg: #1e1e2e;
+      --code-text: #cdd6f4;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 20px;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, var(--accent), #a855f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-bottom: 22px;
+      text-align: center;
+    }
+
+    .main-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      width: 100%;
+      max-width: 1100px;
+      overflow: hidden;
+    }
+
+    /* ── Toolbar ─────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 14px;
+      background: var(--toolbar-bg);
+      border-bottom: 1px solid var(--border);
+    }
+    .toolbar .sep {
+      width: 1px; height: 24px; background: var(--border); margin: 0 6px;
+    }
+    .toolbar button {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border: none; border-radius: 6px;
+      background: transparent; cursor: pointer; font-size: 15px;
+      color: var(--text); transition: background .15s, color .15s; position: relative;
+    }
+    .toolbar button:hover { background: #e8eaed; }
+    .toolbar button.active { background: var(--accent); color: #fff; }
+    .toolbar button svg { width: 18px; height: 18px; pointer-events: none; }
+
+    .color-group, .highlight-group {
+      display: inline-flex; align-items: center; gap: 0; position: relative;
+    }
+    .color-group button.apply-color,
+    .highlight-group button.apply-highlight {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border: none; border-radius: 6px 0 0 6px;
+      background: transparent; cursor: pointer; font-size: 15px;
+      color: var(--text); transition: background .15s; position: relative;
+    }
+    .color-group button.apply-color:hover,
+    .highlight-group button.apply-highlight:hover { background: #e8eaed; }
+    .color-group button.apply-color svg,
+    .highlight-group button.apply-highlight svg { width: 18px; height: 18px; pointer-events: none; }
+    .color-indicator, .highlight-indicator {
+      width: 18px; height: 4px; border-radius: 2px;
+      position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); pointer-events: none;
+    }
+    .color-swatch-btn, .highlight-swatch-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 34px; border: none; border-radius: 0 6px 6px 0;
+      background: transparent; cursor: pointer; position: relative;
+      transition: background .15s;
+    }
+    .color-swatch-btn:hover, .highlight-swatch-btn:hover { background: #e8eaed; }
+    .color-swatch-btn input[type="color"],
+    .highlight-swatch-btn input[type="color"] {
+      position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer;
+    }
+    .swatch-arrow {
+      font-size: 8px; color: var(--text-secondary); pointer-events: none;
+    }
+
+    .font-size-select, .font-family-select {
+      height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px;
+      background: #fff; font-size: 13px; color: var(--text); cursor: pointer; outline: none;
+      transition: border .15s;
+    }
+    .font-size-select:focus, .font-family-select:focus { border-color: var(--accent); }
+    .font-family-select { max-width: 130px; }
+
+    /* Setting groups (bg color / default text color) */
+    .setting-group {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 0 4px; height: 34px;
+    }
+    .setting-label {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 12px; color: var(--text-secondary); white-space: nowrap;
+      cursor: default; user-select: none;
+    }
+    .mini-color-input {
+      width: 28px; height: 24px; padding: 0; border: 1px solid var(--border);
+      border-radius: 4px; cursor: pointer; background: none;
+      -webkit-appearance: none; appearance: none;
+    }
+    .mini-color-input::-webkit-color-swatch-wrapper { padding: 2px; }
+    .mini-color-input::-webkit-color-swatch { border: none; border-radius: 2px; }
+
+    /* ── Dual-Pane Layout ────────────────────────── */
+    .dual-pane {
+      display: flex;
+      min-height: 380px;
+    }
+
+    .pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .pane + .pane { border-left: 1px solid var(--border); }
+
+    .pane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--toolbar-bg);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .pane-header .label {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .pane-header .label .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+    .pane-header .label .dot.green { background: #22c55e; }
+    .pane-header .label .dot.blue  { background: #3b82f6; }
+
+    .copy-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 14px; border: 1px solid var(--border); border-radius: 6px;
+      background: #fff; font-size: 12px; font-weight: 600; color: var(--text);
+      cursor: pointer; transition: all .15s;
+    }
+    .copy-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .copy-btn svg { width: 14px; height: 14px; }
+
+    /* Left pane – editor */
+    .editor-area {
+      flex: 1;
+      padding: 20px;
+      outline: none;
+      font-size: 16px;
+      line-height: 1.75;
+      color: var(--text);
+      overflow-y: auto;
+    }
+    .editor-area:empty::before {
+      content: attr(data-placeholder);
+      color: #b0b8c4; pointer-events: none;
+    }
+
+    /* Right pane – code view (editable textarea with highlight overlay) */
+    .code-pane-body {
+      flex: 1; position: relative; overflow: hidden;
+    }
+    .code-area {
+      position: absolute; inset: 0;
+      padding: 20px;
+      background: transparent;
+      color: var(--code-text);
+      font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      user-select: text;
+      tab-size: 2;
+      border: none;
+      outline: none;
+      resize: none;
+      width: 100%;
+      z-index: 2;
+    }
+    .code-backdrop {
+      position: absolute; inset: 0;
+      padding: 20px;
+      background: var(--code-bg);
+      font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Consolas", monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-all;
+      tab-size: 2;
+      overflow-y: auto;
+      color: transparent;
+      z-index: 1;
+      pointer-events: none;
+    }
+    .code-backdrop .hl-mark {
+      background: rgba(79, 110, 247, 0.35);
+      border-radius: 2px;
+    }
+
+    /* Left pane cross-highlight */
+    .cross-highlight {
+      background: rgba(79, 110, 247, 0.25) !important;
+      border-radius: 2px;
+    }
+
+    /* ── Bottom bar ──────────────────────────────── */
+    .bottom-bar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 18px; border-top: 1px solid var(--border); background: var(--toolbar-bg);
+    }
+    .bottom-bar .hint { font-size: 12px; color: var(--text-secondary); }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 20px; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: background .2s, transform .1s, box-shadow .2s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-outline {
+      background: #fff; color: var(--text); border: 1px solid var(--border);
+    }
+    .btn-outline:hover { background: #f3f4f6; }
+    .btn svg { width: 15px; height: 15px; }
+
+    /* ── Toast ────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #1a1a2e; color: #fff; padding: 10px 28px; border-radius: 8px;
+      font-size: 14px; opacity: 0; pointer-events: none;
+      transition: opacity .3s, transform .3s; z-index: 999; white-space: nowrap;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 768px) {
+      .dual-pane { flex-direction: column; }
+      .pane + .pane { border-left: none; border-top: 1px solid var(--border); }
+      .dual-pane { min-height: auto; }
+      .editor-area, .code-area { min-height: 220px; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>✨ 富文本生成工具</h1>
+  <p class="subtitle">左侧编辑并调整样式 → 右侧实时生成富文本代码 → 分别复制到需要的地方</p>
+
+  <div class="main-card">
+    <!-- Toolbar -->
+    <div class="toolbar" id="toolbar">
+      <select class="font-family-select" id="fontFamily" title="字体">
+        <option value="">默认字体</option>
+        <option value="Microsoft YaHei">微软雅黑</option>
+        <option value="SimSun">宋体</option>
+        <option value="SimHei">黑体</option>
+        <option value="KaiTi">楷体</option>
+        <option value="Arial">Arial</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Courier New">Courier New</option>
+      </select>
+
+      <select class="font-size-select" id="fontSize" title="字号">
+        <option value="">字号</option>
+        <option value="1">12px</option>
+        <option value="2">14px</option>
+        <option value="3">16px</option>
+        <option value="4">18px</option>
+        <option value="5">24px</option>
+        <option value="6">32px</option>
+        <option value="7">48px</option>
+      </select>
+
+      <div class="sep"></div>
+
+      <button id="btnBold" title="加粗" data-cmd="bold">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 0 8H6z"/><path d="M6 12h9a4 4 0 0 1 0 8H6z"/></svg>
+      </button>
+      <button id="btnItalic" title="斜体" data-cmd="italic">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>
+      </button>
+      <button id="btnUnderline" title="下划线" data-cmd="underline">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 0 0 12 0V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
+      </button>
+      <button id="btnStrike" title="删除线" data-cmd="strikeThrough">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"/><path d="M17.5 7.5c0-2-1.5-3.5-5.5-3.5S6.5 5.5 6.5 7.5c0 4 11 4 11 8 0 2-1.5 3.5-5.5 3.5s-5.5-1.5-5.5-3.5"/></svg>
+      </button>
+
+      <div class="sep"></div>
+
+      <div class="color-group">
+        <button class="apply-color" id="btnColor" title="应用文字颜色（点击直接上色）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L4 21h2l2.4-6h7.2L18 21h2L12 3z"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
+          <span class="color-indicator" id="colorIndicator" style="background:#e74c3c;"></span>
+        </button>
+        <span class="color-swatch-btn" title="选择文字颜色">
+          <span class="swatch-arrow">▼</span>
+          <input type="color" id="colorPicker" value="#e74c3c" />
+        </span>
+      </div>
+
+      <div class="highlight-group">
+        <button class="apply-highlight" id="btnHighlight" title="应用背景高亮（点击直接上色）">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 21h14l-2.5-5H7.5L5 21zm3.5-7h7L18 8.5c.3-.6.1-1.4-.5-1.7L13 4.2c-.6-.3-1.4-.1-1.7.5L8.5 14z"/></svg>
+          <span class="highlight-indicator" id="highlightIndicator" style="background:#ffe066;"></span>
+        </button>
+        <span class="highlight-swatch-btn" title="选择高亮颜色">
+          <span class="swatch-arrow">▼</span>
+          <input type="color" id="highlightPicker" value="#ffe066" />
+        </span>
+      </div>
+
+      <div class="sep"></div>
+
+      <button title="左对齐" data-cmd="justifyLeft">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="10" x2="15" y2="10"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="3" y1="18" x2="15" y2="18"/></svg>
+      </button>
+      <button title="居中" data-cmd="justifyCenter">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="10" x2="18" y2="10"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="6" y1="18" x2="18" y2="18"/></svg>
+      </button>
+      <button title="右对齐" data-cmd="justifyRight">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="10" x2="21" y2="10"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="9" y1="18" x2="21" y2="18"/></svg>
+      </button>
+
+      <div class="sep"></div>
+
+      <button title="撤销" data-cmd="undo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      </button>
+      <button title="重做" data-cmd="redo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
+      </button>
+
+      <div class="sep"></div>
+
+      <button title="清除格式" data-cmd="removeFormat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="4" x2="20" y2="20"/><path d="M8 4h8l-4 10"/></svg>
+      </button>
+
+      <div class="sep"></div>
+
+      <!-- Editor BG color -->
+      <div class="setting-group" title="编辑区背景色">
+        <label class="setting-label">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          背景
+        </label>
+        <input type="color" id="editorBgPicker" class="mini-color-input" value="#ffffff" />
+      </div>
+
+      <!-- Default text color -->
+      <div class="setting-group" title="默认字色（未单独改色时的文字颜色）">
+        <label class="setting-label">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L4 21h2l2.4-6h7.2L18 21h2L12 3z"/></svg>
+          默认字色
+        </label>
+        <input type="color" id="defaultTextColorPicker" class="mini-color-input" value="#1a1a2e" />
+      </div>
+    </div>
+
+    <!-- Dual Pane -->
+    <div class="dual-pane">
+      <!-- LEFT: Preview -->
+      <div class="pane">
+        <div class="pane-header">
+          <span class="label"><span class="dot green"></span> 预览显示</span>
+          <button class="copy-btn" id="copyPreview" title="复制为富文本（带样式）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            复制预览
+          </button>
+        </div>
+        <div class="editor-area" id="editor" contenteditable="true"
+             data-placeholder="在这里输入文字，选中后用工具栏调整样式 ..."></div>
+      </div>
+
+      <!-- RIGHT: Code -->
+      <div class="pane">
+        <div class="pane-header">
+          <span class="label"><span class="dot blue"></span> 富文本代码</span>
+          <button class="copy-btn" id="copyCode" title="复制HTML富文本代码">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            复制代码
+          </button>
+        </div>
+        <div class="code-pane-body">
+          <div class="code-backdrop" id="codeBackdrop"></div>
+          <textarea class="code-area" id="codeView" spellcheck="false" placeholder="在此编辑富文本代码，左侧将实时同步显示..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom -->
+    <div class="bottom-bar">
+      <span class="hint">💡 左右双向同步：选中一侧文本 → 另一侧自动高亮对应内容</span>
+      <button class="btn btn-outline" id="btnClearAll">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        清空全部
+      </button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const editor   = document.getElementById('editor');
+    const codeView = document.getElementById('codeView');
+    const toast    = document.getElementById('toast');
+
+    const codeBackdrop = document.getElementById('codeBackdrop');
+
+    // Prevent infinite sync loops
+    let syncing = false;
+
+    /* ── Toast ─────────────────────────────────── */
+    function showToast(msg, ms = 2200) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), ms);
+    }
+
+    /* ══════════════════════════════════════════════
+       Cross-highlight: bidirectional selection sync
+       ══════════════════════════════════════════════
+
+       KEY IDEA — use a single, unified text index:
+       "PTI" = Plain-Text-Index = the index into the string you'd get by
+       walking the code/HTML and ignoring everything between `<` and `>`.
+       
+       Both sides use the EXACT SAME rule to compute PTI, so they always
+       agree on offsets — no reliance on innerText or browser quirks.
+       
+       Left (DOM editor):
+         We serialize the editor to an HTML string (the same way cleanHTML does),
+         and compute PTI by counting non-tag characters.
+         When the user selects, we figure out what plain text is selected,
+         then find its PTI position using the same serialized string.
+       
+       Right (code textarea):
+         Simply walk codeView.value, counting non-tag chars → PTI.
+    */
+
+    function escapeForBackdrop(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function clearCodeHighlight() {
+      codeBackdrop.textContent = codeView.value;
+    }
+
+    function highlightCodeRange(codeStr, codeStart, codeEnd) {
+      if (codeStart < 0) codeStart = 0;
+      if (codeEnd > codeStr.length) codeEnd = codeStr.length;
+      if (codeStart >= codeEnd) { codeBackdrop.textContent = codeStr; return; }
+      const before = escapeForBackdrop(codeStr.substring(0, codeStart));
+      const marked = escapeForBackdrop(codeStr.substring(codeStart, codeEnd));
+      const after  = escapeForBackdrop(codeStr.substring(codeEnd));
+      codeBackdrop.innerHTML = before + '<span class="hl-mark">' + marked + '</span>' + after;
+    }
+
+    let crossHighlightActive = false;
+
+    function clearEditorHighlight() {
+      if (!crossHighlightActive) return;
+      const marks = editor.querySelectorAll('[data-cross-hl]');
+      marks.forEach(mark => {
+        const parent = mark.parentNode;
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
+        parent.normalize();
+      });
+      crossHighlightActive = false;
+    }
+
+    /*
+     * Walk the code string character by character.
+     * Skip everything between `<` and `>`.
+     * For each remaining character, store its code offset.
+     * Returns array where map[pti] = codeOffset.
+     * map.length = ptiCount + 1 (last entry is end-sentinel).
+     */
+    function buildPtiToCodeMap(codeStr) {
+      const map = [];
+      let i = 0;
+      while (i < codeStr.length) {
+        if (codeStr[i] === '<') {
+          const gt = codeStr.indexOf('>', i);
+          if (gt === -1) break;
+          i = gt + 1;
+        } else {
+          map.push(i);
+          i++;
+        }
+      }
+      map.push(i);
+      return map;
+    }
+
+    /*
+     * Given a code-string offset, return the PTI count of chars before it.
+     */
+    function codeOffsetToPti(codeStr, codeOffset) {
+      let pti = 0, i = 0;
+      while (i < codeStr.length && i < codeOffset) {
+        if (codeStr[i] === '<') {
+          const gt = codeStr.indexOf('>', i);
+          if (gt === -1) break;
+          if (codeOffset <= gt) return pti; // offset inside a tag
+          i = gt + 1;
+        } else {
+          pti++;
+          i++;
+        }
+      }
+      return pti;
+    }
+
+    /* ──────────────────────────────────────────────
+       LEFT SIDE (editor) helpers
+       ──────────────────────────────────────────────
+       
+       For the editor, we need to convert between:
+       - A DOM Range (selection) and its PTI offset in the editor's HTML
+       - A PTI offset and the corresponding text nodes (for highlighting)
+       
+       Approach: walk the editor DOM and emit "tokens":
+         - For each text node → add a token { type:'text', node, chars: [...] }
+           each char in the node gets its own PTI index.
+         - For each <br> → emit a virtual newline char at PTI (no node to wrap).
+         - For each <div> (except the very first block) → emit a virtual newline
+           char representing the line break shown in the right pane.
+         
+       This must match cleanHTML's output exactly. cleanHTML's rules:
+         <div><br></div>     → \n
+         <div>...            → \n before content
+         </div>              → (nothing)
+         <br>                → \n
+         leading \n is trimmed.
+    */
+
+    // Build a list of (pti → {node, charIndex}) and track where newlines come from.
+    // We also track the "serialized editor HTML after cleanHTML" PTI ordering.
+    // Returns: { entries: [{ pti, type:'text', node, nodeCharIdx } | { pti, type:'br' } | { pti, type:'divnl' }],
+    //           totalPti }
+    function buildEditorPtiEntries() {
+      const entries = [];
+      let pti = 0;
+
+      // Mirror cleanHTML's rule: first \n from a top-level <div> is trimmed.
+      // We'll emit a pseudo-newline BEFORE each top-level <div> when it's not the
+      // first top-level child (or if it IS first but there are already earlier chars).
+      // Equivalently: emit a \n before every <div> *after* we've emitted at least
+      // one char and the <div> starts at the top level.
+      // To be robust, we emit newline before the div if (pti > 0 && it's a top-level div)
+      // OR (it's a nested div after content at same level). Simpler: walk, and
+      // whenever we encounter a <div>, if we've emitted any char, emit \n before its content.
+
+      function walk(node, isTopLevel) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const txt = node.textContent;
+          for (let i = 0; i < txt.length; i++) {
+            entries.push({ pti: pti++, type: 'text', node, nodeCharIdx: i, char: txt[i] });
+          }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName;
+          if (tag === 'BR') {
+            entries.push({ pti: pti++, type: 'br', char: '\n' });
+            return;
+          }
+          if (tag === 'DIV') {
+            // Emit \n before content if we've already emitted chars
+            if (pti > 0) {
+              entries.push({ pti: pti++, type: 'divnl', char: '\n' });
+            }
+            for (const c of node.childNodes) walk(c, false);
+            return;
+          }
+          // Any other inline element: recurse
+          for (const c of node.childNodes) walk(c, isTopLevel);
+        }
+      }
+
+      for (const child of editor.childNodes) {
+        walk(child, true);
+      }
+      return { entries, totalPti: pti };
+    }
+
+    /*
+     * Convert a DOM position (container, offset) into a PTI.
+     */
+    function domPosToPti(container, offset) {
+      // Walk the editor following the same rules, but stop when we reach the position.
+      let pti = 0;
+      let found = false;
+
+      function walk(node) {
+        if (found) return;
+        // Check if this is the container itself when offset is a child index
+        if (container.nodeType === Node.ELEMENT_NODE && node === container) {
+          // offset counts child nodes
+          let i = 0;
+          for (const c of node.childNodes) {
+            if (i === offset) { found = true; return; }
+            walk(c);
+            if (found) return;
+            i++;
+          }
+          // offset beyond last child
+          found = true;
+          return;
+        }
+
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (node === container) {
+            pti += offset;
+            found = true;
+            return;
+          }
+          pti += node.textContent.length;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName;
+          if (tag === 'BR') {
+            pti++;
+            return;
+          }
+          if (tag === 'DIV') {
+            if (pti > 0) pti++; // divnl
+            for (const c of node.childNodes) {
+              walk(c);
+              if (found) return;
+            }
+            return;
+          }
+          for (const c of node.childNodes) {
+            walk(c);
+            if (found) return;
+          }
+        }
+      }
+
+      // Start walk from editor
+      for (const child of editor.childNodes) {
+        // Handle case where container is editor itself (top level)
+        if (container === editor) {
+          let idx = 0;
+          for (const c of editor.childNodes) {
+            if (idx === offset) { found = true; break; }
+            walk(c);
+            if (found) break;
+            idx++;
+          }
+          return pti;
+        }
+        walk(child);
+        if (found) return pti;
+      }
+      return pti;
+    }
+
+    /*
+     * Given a PTI range, find editor text nodes that fall within it
+     * and return wrapping instructions.
+     */
+    function editorPtiRangeToWraps(ptiStart, ptiEnd) {
+      const { entries } = buildEditorPtiEntries();
+      // Collect per-text-node ranges
+      const perNode = new Map(); // node → [minPti, maxPti+1] in node chars
+      for (const e of entries) {
+        if (e.type !== 'text') continue;
+        if (e.pti < ptiStart || e.pti >= ptiEnd) continue;
+        const existing = perNode.get(e.node);
+        if (!existing) {
+          perNode.set(e.node, { start: e.nodeCharIdx, end: e.nodeCharIdx + 1 });
+        } else {
+          existing.start = Math.min(existing.start, e.nodeCharIdx);
+          existing.end   = Math.max(existing.end,   e.nodeCharIdx + 1);
+        }
+      }
+      const wraps = [];
+      for (const [node, r] of perNode) {
+        wraps.push({ node, localStart: r.start, localEnd: r.end });
+      }
+      return wraps;
+    }
+
+    function highlightEditorPtiRange(ptiStart, ptiEnd) {
+      clearEditorHighlight();
+      if (ptiStart >= ptiEnd) return;
+      const wraps = editorPtiRangeToWraps(ptiStart, ptiEnd);
+
+      // Wrap in reverse order among siblings to avoid offset issues
+      // Group by parent and process parents independently, each in reverse.
+      const byParent = new Map();
+      for (const w of wraps) {
+        const p = w.node.parentNode;
+        if (!byParent.has(p)) byParent.set(p, []);
+        byParent.get(p).push(w);
+      }
+      for (const [parent, list] of byParent) {
+        // Get children array index for each node, sort desc by index
+        const childArr = Array.from(parent.childNodes);
+        list.sort((a, b) => childArr.indexOf(b.node) - childArr.indexOf(a.node));
+        for (const { node, localStart, localEnd } of list) {
+          if (!node.parentNode) continue; // node was merged/removed
+          const text = node.textContent;
+          const ls = Math.max(0, localStart);
+          const le = Math.min(text.length, localEnd);
+          if (ls >= le) continue;
+
+          const frag = document.createDocumentFragment();
+          if (ls > 0) frag.appendChild(document.createTextNode(text.substring(0, ls)));
+          const span = document.createElement('span');
+          span.className = 'cross-highlight';
+          span.setAttribute('data-cross-hl', 'true');
+          span.textContent = text.substring(ls, le);
+          frag.appendChild(span);
+          if (le < text.length) frag.appendChild(document.createTextNode(text.substring(le)));
+          node.parentNode.replaceChild(frag, node);
+        }
+      }
+
+      if (wraps.length > 0) crossHighlightActive = true;
+    }
+
+    /* ── Handler: Editor selection → highlight code ── */
+    let editorHighlightTimer = null;
+    function onEditorSelectionChange() {
+      clearTimeout(editorHighlightTimer);
+      editorHighlightTimer = setTimeout(() => {
+        const sel = window.getSelection();
+        if (!sel.rangeCount || sel.isCollapsed || !editor.contains(sel.anchorNode)) {
+          clearCodeHighlight();
+          return;
+        }
+        const range = sel.getRangeAt(0);
+        const ptiStart = domPosToPti(range.startContainer, range.startOffset);
+        const ptiEnd   = domPosToPti(range.endContainer,   range.endOffset);
+
+        if (ptiStart >= ptiEnd) { clearCodeHighlight(); return; }
+
+        const codeStr = codeView.value;
+        const map = buildPtiToCodeMap(codeStr);
+        const s = Math.min(ptiStart, map.length - 1);
+        const e = Math.min(ptiEnd,   map.length - 1);
+        highlightCodeRange(codeStr, map[s], map[e]);
+      }, 30);
+    }
+
+    /* ── Handler: Code textarea selection → highlight editor ── */
+    let codeHighlightTimer = null;
+    function onCodeSelectionChange() {
+      clearTimeout(codeHighlightTimer);
+      codeHighlightTimer = setTimeout(() => {
+        const selStart = codeView.selectionStart;
+        const selEnd = codeView.selectionEnd;
+        if (selStart === selEnd) {
+          clearEditorHighlight();
+          return;
+        }
+        const codeStr = codeView.value;
+        const ptiStart = codeOffsetToPti(codeStr, selStart);
+        const ptiEnd   = codeOffsetToPti(codeStr, selEnd);
+        if (ptiStart >= ptiEnd) { clearEditorHighlight(); return; }
+        highlightEditorPtiRange(ptiStart, ptiEnd);
+      }, 30);
+    }
+
+    /* Sync code backdrop scroll with textarea */
+    codeView.addEventListener('scroll', () => {
+      codeBackdrop.scrollTop = codeView.scrollTop;
+      codeBackdrop.scrollLeft = codeView.scrollLeft;
+    });
+
+    /* Listen for selection changes */
+    document.addEventListener('selectionchange', () => {
+      const sel = window.getSelection();
+      if (sel.anchorNode && editor.contains(sel.anchorNode)) {
+        clearEditorHighlight();
+        onEditorSelectionChange();
+      }
+    });
+
+    codeView.addEventListener('select', onCodeSelectionChange);
+    codeView.addEventListener('mouseup', onCodeSelectionChange);
+    codeView.addEventListener('keyup', e => {
+      if (e.shiftKey || e.key === 'Shift' || e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End') {
+        onCodeSelectionChange();
+      }
+    });
+
+    // Clear highlights when focus changes
+    editor.addEventListener('focus', () => { clearEditorHighlight(); });
+    codeView.addEventListener('focus', () => { clearCodeHighlight(); });
+    codeView.addEventListener('blur', () => { clearEditorHighlight(); });
+
+    /* ── Selection save/restore (for toolbar actions) */
+    let savedRange = null;
+    function saveSelection() {
+      const sel = window.getSelection();
+      if (sel.rangeCount > 0) savedRange = sel.getRangeAt(0);
+    }
+    function restoreSelection() {
+      if (savedRange) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+      }
+    }
+    // Save selection whenever it changes inside the editor
+    editor.addEventListener('mouseup', saveSelection);
+    editor.addEventListener('keyup', saveSelection);
+
+    /* ── Sync: Editor → Code textarea ──────────── */
+    function syncEditorToCode() {
+      if (syncing) return;
+      syncing = true;
+      const raw = editor.innerHTML;
+      const code = cleanHTML(raw);
+      codeView.value = code;
+      codeBackdrop.textContent = code; // keep backdrop in sync
+      syncing = false;
+    }
+
+    /* ── Sync: Code textarea → Editor ──────────── */
+    function syncCodeToEditor() {
+      if (syncing) return;
+      syncing = true;
+      const code = codeView.value;
+      const html = code.replace(/\n/g, '<br>');
+      editor.innerHTML = html;
+      codeBackdrop.textContent = code; // keep backdrop in sync
+      syncing = false;
+    }
+
+    /* ── HTML cleanup ──────────────────────────── */
+    function cleanHTML(html) {
+      let s = html;
+      s = s.replace(/<div><br\s*\/?><\/div>/gi, '\n');
+      s = s.replace(/<div>/gi, '\n');
+      s = s.replace(/<\/div>/gi, '');
+      s = s.replace(/<br\s*\/?>/gi, '\n');
+      if (s.startsWith('\n')) s = s.substring(1);
+      return s;
+    }
+
+    /* ── Toolbar: generic execCommand buttons ──── */
+    document.querySelectorAll('.toolbar button[data-cmd]').forEach(btn => {
+      btn.addEventListener('mousedown', e => e.preventDefault());
+      btn.addEventListener('click', () => {
+        restoreSelection();
+        document.execCommand(btn.dataset.cmd, false, null);
+        editor.focus();
+        saveSelection();
+        updateActiveStates();
+        syncEditorToCode();
+      });
+    });
+
+    /* ── Font size ────────────────────────────── */
+    document.getElementById('fontSize').addEventListener('mousedown', () => saveSelection());
+    document.getElementById('fontSize').addEventListener('change', function() {
+      restoreSelection();
+      if (this.value) document.execCommand('fontSize', false, this.value);
+      editor.focus();
+      saveSelection();
+      syncEditorToCode();
+    });
+
+    /* ── Font family ──────────────────────────── */
+    document.getElementById('fontFamily').addEventListener('mousedown', () => saveSelection());
+    document.getElementById('fontFamily').addEventListener('change', function() {
+      restoreSelection();
+      if (this.value) document.execCommand('fontName', false, this.value);
+      editor.focus();
+      saveSelection();
+      syncEditorToCode();
+    });
+
+    /* ── Foreground colour ─────────────────────── */
+    const colorPicker = document.getElementById('colorPicker');
+    const colorInd    = document.getElementById('colorIndicator');
+    let currentColor  = colorPicker.value;
+
+    // Click the button → apply current colour immediately
+    document.getElementById('btnColor').addEventListener('mousedown', e => e.preventDefault());
+    document.getElementById('btnColor').addEventListener('click', () => {
+      restoreSelection();
+      document.execCommand('foreColor', false, currentColor);
+      editor.focus();
+      saveSelection();
+      syncEditorToCode();
+    });
+
+    // Change colour via picker → update stored colour + apply
+    colorPicker.addEventListener('input', () => {
+      currentColor = colorPicker.value;
+      colorInd.style.background = currentColor;
+      restoreSelection();
+      document.execCommand('foreColor', false, currentColor);
+      editor.focus();
+      saveSelection();
+      syncEditorToCode();
+    });
+
+    /* ── Highlight colour ──────────────────────── */
+    const hlPicker = document.getElementById('highlightPicker');
+    const hlInd    = document.getElementById('highlightIndicator');
+    let currentHL  = hlPicker.value;
+
+    // Click the button → apply current highlight immediately
+    document.getElementById('btnHighlight').addEventListener('mousedown', e => e.preventDefault());
+    document.getElementById('btnHighlight').addEventListener('click', () => {
+      restoreSelection();
+      document.execCommand('hiliteColor', false, currentHL);
+      editor.focus();
+      saveSelection();
+      syncEditorToCode();
+    });
+
+    // Change highlight via picker → update stored colour + apply
+    hlPicker.addEventListener('input', () => {
+      currentHL = hlPicker.value;
+      hlInd.style.background = currentHL;
+      restoreSelection();
+      document.execCommand('hiliteColor', false, currentHL);
+      editor.focus();
+      saveSelection();
+      syncEditorToCode();
+    });
+
+    /* ── Active states ─────────────────────────── */
+    function updateActiveStates() {
+      document.getElementById('btnBold').classList.toggle('active', document.queryCommandState('bold'));
+      document.getElementById('btnItalic').classList.toggle('active', document.queryCommandState('italic'));
+      document.getElementById('btnUnderline').classList.toggle('active', document.queryCommandState('underline'));
+      document.getElementById('btnStrike').classList.toggle('active', document.queryCommandState('strikeThrough'));
+    }
+
+    /* ── Editor events → sync to code ──────────── */
+    editor.addEventListener('input', syncEditorToCode);
+    editor.addEventListener('keyup', () => { updateActiveStates(); syncEditorToCode(); });
+    editor.addEventListener('mouseup', () => { updateActiveStates(); });
+    editor.addEventListener('paste', handlePaste);
+
+    /* ── Paste normalization ─────────────────────
+       Convert pasted HTML into a consistent format that matches what
+       the toolbar produces: <font color="#xxx">, <b>/<i>/<u>/<s> instead of
+       <span style="color:rgb(...); font-weight:bold; ...">.
+       Also keeps <font size="N"> for font-size.
+    */
+    function handlePaste(e) {
+      e.preventDefault();
+      const cd = e.clipboardData || window.clipboardData;
+      if (!cd) return;
+
+      let html = cd.getData('text/html');
+      const text = cd.getData('text/plain') || '';
+
+      if (!html) {
+        // plain text paste
+        document.execCommand('insertText', false, text);
+        setTimeout(syncEditorToCode, 0);
+        return;
+      }
+
+      const normalized = normalizePastedHTML(html);
+      // Use insertHTML to preserve cursor position
+      document.execCommand('insertHTML', false, normalized);
+      setTimeout(() => {
+        // After insertion, also normalize any remaining <span style> the browser
+        // might have inserted (some browsers re-wrap on insertHTML).
+        normalizeEditorContent();
+        syncEditorToCode();
+      }, 0);
+    }
+
+    /*
+     * Parse pasted HTML string, strip scripts / meta / unwanted stuff,
+     * and convert inline styles to classic tags.
+     */
+    function normalizePastedHTML(html) {
+      // Parse into a detached DOM
+      const container = document.createElement('div');
+      container.innerHTML = html;
+
+      // Remove dangerous / useless nodes
+      container.querySelectorAll('script,style,meta,link,title,head').forEach(n => n.remove());
+
+      // Transform the tree
+      const output = document.createElement('div');
+      for (const child of Array.from(container.childNodes)) {
+        transformNode(child, output);
+      }
+      return output.innerHTML;
+    }
+
+    /*
+     * Call after insertHTML — transforms any remaining style-based formatting
+     * in the editor into tag-based formatting.
+     */
+    function normalizeEditorContent() {
+      const container = document.createElement('div');
+      container.innerHTML = editor.innerHTML;
+      const output = document.createElement('div');
+      for (const child of Array.from(container.childNodes)) {
+        transformNode(child, output);
+      }
+      const newHTML = output.innerHTML;
+      if (newHTML !== editor.innerHTML) {
+        editor.innerHTML = newHTML;
+      }
+    }
+
+    /*
+     * Recursive node transformer: reads a source node and appends the
+     * normalized equivalent to the target parent.
+     */
+    function transformNode(node, target) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        // Preserve text content verbatim
+        target.appendChild(document.createTextNode(node.textContent));
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+      const tag = node.tagName.toUpperCase();
+
+      // Drop unwanted tags entirely (but keep their children)
+      const passthroughOnly = new Set(['HTML','BODY','HEADER','FOOTER','ARTICLE','SECTION','MAIN','NAV','ASIDE','FIGURE','FIGCAPTION','TBODY','THEAD','TFOOT','TR','TD','TH']);
+      if (passthroughOnly.has(tag)) {
+        for (const c of Array.from(node.childNodes)) transformNode(c, target);
+        return;
+      }
+
+      // Line-break handling
+      if (tag === 'BR') {
+        target.appendChild(document.createElement('br'));
+        return;
+      }
+
+      // Collect style-derived formatting
+      const style = node.getAttribute && node.getAttribute('style') || '';
+      const styleObj = parseStyle(style);
+
+      const wrappers = []; // array of element names to wrap innermost → outermost
+
+      // Font color
+      let color = styleObj['color'] || '';
+      if (!color && tag === 'FONT' && node.getAttribute('color')) {
+        color = node.getAttribute('color');
+      }
+      const hexColor = toHexColor(color);
+
+      // Background / highlight
+      let bgColor = styleObj['background-color'] || styleObj['background'] || '';
+      const hexBg = toHexColor(bgColor);
+
+      // Font size (keep as <font size="N"> if it came from <font size=...>)
+      const fontSize = (tag === 'FONT' && node.getAttribute('size')) ? node.getAttribute('size') : null;
+
+      // Font family
+      let fontFamily = styleObj['font-family'] || '';
+      if (!fontFamily && tag === 'FONT' && node.getAttribute('face')) {
+        fontFamily = node.getAttribute('face');
+      }
+
+      // Bold
+      const isBold = tag === 'B' || tag === 'STRONG' ||
+                     (styleObj['font-weight'] && /^(bold|[6-9]\d{2})$/i.test(styleObj['font-weight']));
+      // Italic
+      const isItalic = tag === 'I' || tag === 'EM' || styleObj['font-style'] === 'italic';
+      // Underline
+      const isUnderline = tag === 'U' ||
+                          (styleObj['text-decoration'] && /underline/i.test(styleObj['text-decoration'])) ||
+                          (styleObj['text-decoration-line'] && /underline/i.test(styleObj['text-decoration-line']));
+      // Strikethrough
+      const isStrike = tag === 'S' || tag === 'STRIKE' || tag === 'DEL' ||
+                       (styleObj['text-decoration'] && /line-through/i.test(styleObj['text-decoration'])) ||
+                       (styleObj['text-decoration-line'] && /line-through/i.test(styleObj['text-decoration-line']));
+
+      // Build wrapper chain — outermost first so final DOM is color→b→i→u→s
+      let currentParent = target;
+      const appendWrapper = (el) => { currentParent.appendChild(el); currentParent = el; };
+
+      // Font (color / size / family) — combined into one <font> tag
+      if (hexColor || fontSize || fontFamily) {
+        const fontEl = document.createElement('font');
+        if (hexColor)   fontEl.setAttribute('color', hexColor);
+        if (fontSize)   fontEl.setAttribute('size', fontSize);
+        if (fontFamily) fontEl.setAttribute('face', fontFamily);
+        appendWrapper(fontEl);
+      }
+
+      if (isBold)      appendWrapper(document.createElement('b'));
+      if (isItalic)    appendWrapper(document.createElement('i'));
+      if (isUnderline) appendWrapper(document.createElement('u'));
+      if (isStrike)    appendWrapper(document.createElement('s'));
+
+      // Background color → use <span style="background-color:#xxx">
+      if (hexBg) {
+        const span = document.createElement('span');
+        span.setAttribute('style', `background-color: ${hexBg}`);
+        appendWrapper(span);
+      }
+
+      // Block elements — preserve structure
+      const blockTags = new Set(['DIV','P','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','LI','UL','OL','PRE']);
+      if (blockTags.has(tag)) {
+        // If we have no inline wrappers, the block itself becomes the wrapper
+        if (currentParent === target) {
+          const blockEl = (tag === 'UL' || tag === 'OL' || tag === 'LI')
+            ? document.createElement(tag.toLowerCase())
+            : document.createElement('div');
+          target.appendChild(blockEl);
+          for (const c of Array.from(node.childNodes)) transformNode(c, blockEl);
+        } else {
+          // inline wrappers exist — keep children inside them
+          for (const c of Array.from(node.childNodes)) transformNode(c, currentParent);
+        }
+        return;
+      }
+
+      // Non-block: descend into children inside wrappers
+      for (const c of Array.from(node.childNodes)) transformNode(c, currentParent);
+    }
+
+    /* Parse "color: red; font-weight: bold" into { color:'red', 'font-weight':'bold' } */
+    function parseStyle(styleStr) {
+      const obj = {};
+      if (!styleStr) return obj;
+      styleStr.split(';').forEach(pair => {
+        const idx = pair.indexOf(':');
+        if (idx < 0) return;
+        const k = pair.substring(0, idx).trim().toLowerCase();
+        const v = pair.substring(idx + 1).trim();
+        if (k && v) obj[k] = v;
+      });
+      return obj;
+    }
+
+    /* Convert "rgb(254, 234, 111)" or "red" or "#FEEA6F" → "#feea6f" */
+    function toHexColor(color) {
+      if (!color) return '';
+      color = color.trim();
+      if (!color || color === 'transparent' || color === 'inherit' || color === 'initial' || color === 'currentColor') return '';
+
+      // Already hex
+      if (/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(color)) {
+        // Expand 3-char hex to 6
+        if (color.length === 4) {
+          return '#' + color[1]+color[1] + color[2]+color[2] + color[3]+color[3];
+        }
+        return color.toLowerCase();
+      }
+
+      // rgb(r,g,b) or rgba(r,g,b,a)
+      const m = color.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+      if (m) {
+        const r = parseInt(m[1], 10), g = parseInt(m[2], 10), b = parseInt(m[3], 10);
+        return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+      }
+
+      // Named colors — resolve via a temp element
+      try {
+        const t = document.createElement('div');
+        t.style.color = color;
+        document.body.appendChild(t);
+        const computed = getComputedStyle(t).color;
+        document.body.removeChild(t);
+        const mm = computed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+        if (mm) {
+          return '#' + [+mm[1], +mm[2], +mm[3]].map(x => x.toString(16).padStart(2, '0')).join('');
+        }
+      } catch (e) {}
+      return '';
+    }
+
+    /* ── Code textarea events → sync to editor ─── */
+    codeView.addEventListener('input', syncCodeToEditor);
+
+    /* ── Copy: Preview (rich text) ─────────────── */
+    document.getElementById('copyPreview').addEventListener('click', async () => {
+      const html = editor.innerHTML;
+      if (!html || !editor.textContent.trim()) {
+        showToast('⚠️ 内容为空，请先输入文字'); return;
+      }
+      try {
+        const richHTML = `<html><body><!--StartFragment-->${html}<!--EndFragment--></body></html>`;
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([richHTML], { type: 'text/html' }),
+            'text/plain': new Blob([editor.innerText], { type: 'text/plain' }),
+          })
+        ]);
+        showToast('✅ 预览内容已复制（带样式），可粘贴到微信/邮件');
+      } catch {
+        fallbackCopy(editor);
+      }
+    });
+
+    /* ── Copy: Code (plain text HTML source) ───── */
+    document.getElementById('copyCode').addEventListener('click', async () => {
+      const code = codeView.value;
+      if (!code.trim()) {
+        showToast('⚠️ 内容为空，请先输入文字'); return;
+      }
+      try {
+        await navigator.clipboard.writeText(code);
+        showToast('✅ 富文本代码已复制到剪贴板');
+      } catch {
+        codeView.select();
+        document.execCommand('copy');
+        showToast('✅ 富文本代码已复制');
+      }
+    });
+
+    function fallbackCopy(el) {
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const sel = window.getSelection();
+        sel.removeAllRanges(); sel.addRange(range);
+        document.execCommand('copy');
+        sel.removeAllRanges();
+        showToast('✅ 已复制');
+      } catch { showToast('❌ 复制失败，请手动复制'); }
+    }
+
+    /* ── Clear ─────────────────────────────────── */
+    document.getElementById('btnClearAll').addEventListener('click', () => {
+      editor.innerHTML = '';
+      codeView.value = '';
+      codeBackdrop.textContent = '';
+      editor.focus();
+    });
+
+    /* ── Editor background colour ────────────── */
+    const editorBgPicker = document.getElementById('editorBgPicker');
+    editorBgPicker.addEventListener('input', () => {
+      editor.style.background = editorBgPicker.value;
+    });
+
+    /* ── Default text colour ──────────────────── */
+    const defaultTextColorPicker = document.getElementById('defaultTextColorPicker');
+    defaultTextColorPicker.addEventListener('input', () => {
+      editor.style.color = defaultTextColorPicker.value;
+    });
+
+    /* Initial sync */
+    // Prefer classic HTML tags (<font>, <b>, <i>, ...) over <span style="..."> for execCommand
+    try { document.execCommand('styleWithCSS', false, false); } catch (e) {}
+    syncEditorToCode();
+  </script>
+</body>
+</html>
